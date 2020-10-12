@@ -5,19 +5,12 @@ package cert
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"os/exec"
-	"os/user"
-	"path/filepath"
 	"reflect"
 	"strings"
 )
 
 var (
-	certAdder  = addTrustedCert
-	certFinder = findTrustedCert
-
 	// ErrNotFoundInKeychain represents a hostkey not found in user keychain
 	ErrNotFoundInKeychain = errors.New("item was nout found in keychain")
 
@@ -160,72 +153,27 @@ func (s *Settings) VerifyCert() (string, error) {
 }
 
 func (s *Settings) execute(subcommand string) (string, error) {
-	args := []string{subcommand}
+	args := []string{"security", subcommand}
 	settings, err := s.Marshal(subcommand)
 	if err != nil {
 		return "", err
 	}
 	args = append(args, settings...)
-	out, err := exec.Command("/usr/bin/security", args...).CombinedOutput()
+	out, err := exec.Command("/usr/bin/env", args...).CombinedOutput()
 	if err != nil {
 		return "", errors.New(string(out))
 	}
 	return string(out), nil
 }
 
-// TODO cleanup
-
-// AddVerification add the cert to OSX Keychain
-func AddVerification(certificate string) error {
-	temp, err := ioutil.TempFile("", "")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(temp.Name())
-
-	_, err = temp.Write([]byte(certificate))
-	if err != nil {
-		return err
-	}
-	u, err := user.Current()
-	if err != nil {
-		return err
-	}
-
-	err = certFinder(temp.Name(), u.HomeDir)
-	if err != nil && err != ErrNotFoundInKeychain {
-		return err
-	}
-	if err == nil {
-		return nil
-	}
-
-	output, err := certAdder(temp.Name(), u.HomeDir)
-	if err != nil {
-		return errors.New(string(output))
-	}
-	return nil
-}
-
-func addTrustedCert(tempCertFilename, homedir string) ([]byte, error) {
-	keychain := filepath.Join(homedir, "Library", "Keychains", "login.keychain-db")
-	return exec.Command("/usr/bin/security", "add-trusted-cert", "-p", "ssl", "-e", "hostnameMismatch", "-k", keychain, tempCertFilename).CombinedOutput()
-}
-
-func findTrustedCert(tempCertFilename, homedir string) error {
-	cnameOutput, err := exec.Command("/usr/bin/openssl", "x509", "-noout", "-subject", "-in", tempCertFilename).CombinedOutput()
-	if err != nil {
-		return errors.New(string(cnameOutput))
-	}
-	cname := strings.Trim(strings.TrimPrefix(string(cnameOutput), "subject= /CN="), "\n")
-
-	keychain := filepath.Join(homedir, "Library", "Keychains", "login.keychain-db")
-	findOutput, err := exec.Command("/usr/bin/security", "find-certificate", "-c", cname, "-m", keychain).CombinedOutput()
+// FindTrustedCert runs security find-certificate (by cname) and returns the output
+func (s *Settings) FindTrustedCert(cname string) (string, error) {
+	findOutput, err := exec.Command("/usr/bin/security", "find-certificate", "-c", cname, "-m", s.Keychain).CombinedOutput()
 	if err != nil {
 		if strings.Contains(string(findOutput), "The specified item could not be found in the keychain.") {
-			return ErrNotFoundInKeychain
+			return "", ErrNotFoundInKeychain
 		}
-		return errors.New(string(findOutput))
+		return "", errors.New(string(findOutput))
 	}
-	return nil
+	return string(findOutput), nil
 }
