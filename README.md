@@ -2,13 +2,12 @@
 
 `gosx-cert` provides a quick means to add, verify, and remove certificates to your OSX Keychain.
 
+
 ### Quickstart
 
 1. Create a self-signed certificate:
 
 `openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365`
-
-1. Godoc: https://godoc.org/github.com/stinkyfingers/gosx-cert
 
 1. Add cert to and remove cert from your keychain:
 
